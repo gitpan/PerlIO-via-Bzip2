@@ -6,23 +6,40 @@ use warnings;
 
 use Compress::Bzip2 ();
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
-my $BUF_SIZE = 8192;
+my $Buf_Size = 8192;
+
+# Default (de)compression parameters, see Compress::Bzip2 for details.
+my $Level    = 1;          # Compression level 1..9
+
+# Get and set (de)compression level (0..9)
+sub level {
+    $Level = $_[1] if $_[1];
+    $Level;
+}
+
+sub import {
+    my ($class, %args) = @_;
+
+    $class->level($args{level});
+}
 
 
 sub PUSHED {
     my ($class, $mode, $fh) = @_;
 
     my $self = {
-        buf  => '',
-        mode => $mode,
+        buf    => '',
+        mode   => $mode,
     };
     if ($mode eq 'r') {
-        $self->{stream} = Compress::Bzip2::decompress_init() or return -1;
+        $self->{stream} = Compress::Bzip2::decompress_init()
+          or return -1;
     }
     elsif ($mode eq 'w') {
-        $self->{stream} = Compress::Bzip2::compress_init() or return -1;
+        $self->{stream} = Compress::Bzip2::compress_init(level => $Level)
+          or return -1;
     }
     else {
         return -1;
@@ -31,18 +48,12 @@ sub PUSHED {
 }
 
 
-# Dummy function.  If not present, we get popped when binmode() is called.
-sub BINMODE {
-    return 0;
-}
-
-
 sub FILL {
     my ($self, $fh) = @_;
 
     my ($data);
     my $stream = $self->{stream};
-    if ($stream and (read($fh, $data, $BUF_SIZE) > 0)) {
+    if ($stream and (read($fh, $data, $Buf_Size) > 0)) {
         return $stream->add($data);
     }
     elsif ($stream) {
@@ -80,9 +91,13 @@ __END__
 
 =head1 NAME
 
-PerlIO::via::Bzip2 - PerlIO::via layer for Bzip2 (de)compression
+PerlIO::via::Bzip2 - PerlIO layer for Bzip2 (de)compression
 
 =head1 SYNOPSIS
+
+    use PerlIO::via::Bzip2;
+    # or
+    use PerlIO::via::Bzip2 level => 9; # Maximum compression
 
     # Read a bzip2 compressed file from disk.
     open(my $fh, "<:via(Bzip2)", "compressed_file");
@@ -92,10 +107,30 @@ PerlIO::via::Bzip2 - PerlIO::via layer for Bzip2 (de)compression
     open(my $fh, ">:via(Bzip2)", "compressed_file");
     print {$fh} $uncompressed_data;
 
+    # Set compression level
+    PerlIO::via::Bzip2->level(5);
+    open(my $fh, ">:via(Bzip2)", "compressed_file");
+    print {$fh} $uncompressed_data;
+
 =head1 DESCRIPTION
 
 This module implements a PerlIO layer which will let you handle
 bzip2 compressed files transparently.
+
+=head2 Class Methods
+
+=over 4
+
+=item level([$level])
+
+level sets or returns the compression level of the bzip2 library.  It
+ranges from 1 (least compression, most efficient memory use) to 9
+(best compression, most memory usage).
+
+This parameter can also be set during using library import, using
+C<< use PerlIO::via::Bzip2 level => $level >>.
+
+=back
 
 =head1 BUGS
 
@@ -108,11 +143,11 @@ This module requires Compress::Bzip2 version 1.03.
 
 =head1 SEE ALSO
 
-L<PerlIO::via>
+L<PerlIO::via>, L<Compress::Bzip2>
 
 =head1 AUTHOR
 
-Arjen Laarhoven, E<lt>arjen@cpan.org<gt>
+Arjen Laarhoven, E<lt>arjen@cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
